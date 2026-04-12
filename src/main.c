@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <unistd.h>
 #include <time.h>
 #include "tensor.h"
 #include "model.h"
@@ -8,6 +9,16 @@
 #include "forward.h"
 
 #define M_PI 3.14159265358979323846
+
+void print_usage(const char* prog_name) {
+    printf("Usage: %s [options]\n", prog_name);
+    printf("Options:\n");
+    printf("  -w <dir>    Path to weights directory (default: sagan_128_imagenet)\n");
+    printf("  -c <int>    ImageNet Class ID (0-999, default: 985)\n");
+    printf("  -s <int>    Random seed (default: 69)\n");
+    printf("  -o <file>   Output .ppm filename (default: output.ppm)\n");
+    printf("  -h          Print this help message\n");
+}
 
 // Generates normal distribution noise matching torch.randn().clamp(-1.0, 1.0)
 float randn_clamped() {
@@ -52,14 +63,36 @@ void save_ppm(Tensor* img, const char* filename) {
     fclose(f);
 }
 
-int main() {
-    printf("Initializing SAGAN Pure C Inference Engine...\n");
-    srand(42); // Set seed for reproducibility
+int main(int argc, char *argv[]) {
+    // 1. Default Configuration
+    char* weight_dir = "sagan_128_imagenet";
+    char* out_file = "output.ppm";
+    int target_class = 985;
+    int seed = 69;
 
-    SAGAN_Weights* model = load_all_weights("../bin");
+    // 2. Parse CLI Arguments
+    int opt;
+    while ((opt = getopt(argc, argv, "w:c:s:o:h")) != -1) {
+        switch (opt) {
+            case 'w': weight_dir = optarg; break;
+            case 'c': target_class = atoi(optarg); break;
+            case 's': seed = atoi(optarg); break;
+            case 'o': out_file = optarg; break;
+            case 'h': print_usage(argv[0]); return 0;
+            default:  print_usage(argv[0]); return 1;
+        }
+    }
+
+    printf("--- SAGAN C-Engine ---\n");
+    printf("Weights: %s | Class: %d | Seed: %d | Output: %s\n", 
+           weight_dir, target_class, seed, out_file);
+
+    printf("Initializing SAGAN Pure C Inference Engine...\n");
+    srand(seed); // Set seed for reproducibility
+
+    SAGAN_Weights* model = load_all_weights(weight_dir);
     printf("[SUCCESS] Model Loaded. Commencing Generation...\n\n");
 
-    int target_class = 985; 
     printf("Target Class: %d\n", target_class);
 
     // 1. Create Latent Space (Noise Vector)
@@ -117,7 +150,6 @@ int main() {
     tanh_activation(final_img);
 
     // 7. Save and Cleanup
-    const char* out_file = "pure_c_dog.ppm";
     save_ppm(final_img, out_file);
     free_tensor(final_img);
     free_model(model);
