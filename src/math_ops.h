@@ -104,4 +104,173 @@ void conditional_batch_norm_2d(Tensor* x, Tensor* rm, Tensor* rv, Tensor* gamma_
     }
 }
 
+// Direct Convolution: out = conv2d(in, weight) + bias
+void conv2d(Tensor* input, Tensor* weight, Tensor* bias, Tensor* output, int padding) {
+    int in_c = input->c;
+    int h = input->h;
+    int w = input->w;
+    
+    int out_c = weight->n; // Number of output filters
+    int kh = weight->h;    // Kernel height
+    int kw = weight->w;    // Kernel width
+    
+    // Iterate over every output channel
+    for (int oc = 0; oc < out_c; oc++) {
+        // Bias is optional in some architectures. Handle NULL safely.
+        float b_val = (bias != NULL) ? bias->data[oc] : 0.0f;
+        
+        // Iterate over every pixel in the output spatial grid
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                float sum = b_val;
+                
+                // Dot product of the kernel and the input region
+                for (int ic = 0; ic < in_c; ic++) {
+                    for (int ky = 0; ky < kh; ky++) {
+                        for (int kx = 0; kx < kw; kx++) {
+                            // Map the kernel position to the input image, accounting for padding
+                            int in_y = y + ky - padding;
+                            int in_x = x + kx - padding;
+                            
+                            // If the coordinate is within the image (not in the padded zone)
+                            if (in_y >= 0 && in_y < h && in_x >= 0 && in_x < w) {
+                                float p_val = T_AT(input, 0, ic, in_y, in_x);
+                                float w_val = T_AT(weight, oc, ic, ky, kx);
+                                sum += p_val * w_val;
+                            }
+                        }
+                    }
+                }
+                // Write to the output tensor
+                T_AT(output, 0, oc, y, x) = sum;
+            }
+        }
+    }
+}
+
+// 2x2 Max Pooling with Stride 2
+void max_pool_2x2(Tensor* input, Tensor* output) {
+    for (int c = 0; c < input->c; c++) {
+        for (int y = 0; y < output->h; y++) {
+            for (int x = 0; x < output->w; x++) {
+                // Map output coordinate to the top-left of the 2x2 input block
+                int in_y = y * 2;
+                int in_x = x * 2;
+                
+                float max_val = T_AT(input, 0, c, in_y, in_x);
+                
+                // Compare with the other 3 pixels in the 2x2 block
+                float p1 = T_AT(input, 0, c, in_y, in_x + 1);
+                float p2 = T_AT(input, 0, c, in_y + 1, in_x);
+                float p3 = T_AT(input, 0, c, in_y + 1, in_x + 1);
+                
+                if (p1 > max_val) max_val = p1;
+                if (p2 > max_val) max_val = p2;
+                if (p3 > max_val) max_val = p3;
+                
+                T_AT(output, 0, c, y, x) = max_val;
+            }
+        }
+    }
+}
+
+// Output squeeze
+void tanh_activation(Tensor* t) {
+    int total = t->n * t->c * t->h * t->w;
+    for (int i = 0; i < total; i++) {
+        t->data[i] = tanhf(t->data[i]);
+    }
+}
+
+// Standard Batch Normalization (x - mean) / sqrt(var + eps) * weight + bias
+void batch_norm_2d(Tensor* x, Tensor* rm, Tensor* rv, Tensor* weight, Tensor* bias, Tensor* out) {
+    float eps = 1e-5f;
+    int channels = x->c;
+    int spatial_size = x->h * x->w;
+
+    for (int c = 0; c < channels; c++) {
+        float mean = rm->data[c];
+        float var = rv->data[c];
+        float w = weight->data[c];
+        float b = bias->data[c];
+
+        // Pre-calculate scale and shift for the entire channel
+        float scale = w / sqrtf(var + eps);
+        float shift = b - (mean * scale);
+
+        int offset = c * spatial_size;
+        for (int i = 0; i < spatial_size; i++) {
+            out->data[offset + i] = x->data[offset + i] * scale + shift;
+        }
+    }
+}
+
+// BMM 1: Calculates the raw Attention Map
+void attention_bmm1(Tensor* theta, Tensor* phi, Tensor* attn) {
+    int spatial_t = theta->h * theta->w; // e.g., 64x64 = 4096
+    int spatial_p = phi->h * phi->w;     // e.g., 32x32 = 1024
+    int channels = theta->c;
+
+    // Output is stored in 'attn' which we will allocate as [1, 1, spatial_t, spatial_p]
+    for (int i = 0; i < spatial_t; i++) {
+        for (int j = 0; j < spatial_p; j++) {
+            float sum = 0.0f;
+            for (int c = 0; c < channels; c++) {
+                // Dot product across the channel dimension
+                sum += theta->data[c * spatial_t + i] * phi->data[c * spatial_p + j];
+            }
+            attn->data[i * spatial_p + j] = sum;
+        }
+    }
+}
+
+// Softmax applied to the last dimension of the Attention Map
+void softmax_last_dim(Tensor* attn) {
+    int rows = attn->h; // 4096
+    int cols = attn->w; // 1024
+
+    for (int i = 0; i < rows; i++) {
+        int row_offset = i * cols;
+        
+        // 1. Find max for numerical stability
+        float max_val = attn->data[row_offset];
+        for (int j = 1; j < cols; j++) {
+            if (attn->data[row_offset + j] > max_val) {
+                max_val = attn->data[row_offset + j];
+            }
+        }
+
+        // 2. Calculate Exponentials and Sum
+        float sum = 0.0f;
+        for (int j = 0; j < cols; j++) {
+            attn->data[row_offset + j] = expf(attn->data[row_offset + j] - max_val);
+            sum += attn->data[row_offset + j];
+        }
+
+        // 3. Normalize to probabilities
+        for (int j = 0; j < cols; j++) {
+            attn->data[row_offset + j] /= sum;
+        }
+    }
+}
+
+// BMM 2: Applies the Attention Map to the 'G' tensor
+void attention_bmm2(Tensor* attn, Tensor* g, Tensor* out) {
+    int spatial_t = attn->h; // 4096
+    int spatial_p = attn->w; // 1024
+    int channels = g->c;     // 64
+
+    for (int c = 0; c < channels; c++) {
+        for (int i = 0; i < spatial_t; i++) {
+            float sum = 0.0f;
+            for (int j = 0; j < spatial_p; j++) {
+                // attn[i, j] * g[c, j]
+                sum += attn->data[i * spatial_p + j] * g->data[c * spatial_p + j];
+            }
+            // Writes directly into standard NCHW format!
+            out->data[c * spatial_t + i] = sum;
+        }
+    }
+}
+
 #endif
