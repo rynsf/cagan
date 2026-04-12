@@ -1,26 +1,25 @@
 #include <stdio.h>
 #include "tensor.h"
+#include "model.h"
 
 int main() {
-    printf("Initializing SAGAN C-Engine Verification...\n\n");
+    printf("Initializing SAGAN C-Engine...\n");
 
-    // 1. Target the first Dense layer weight file we extracted
-    // Make sure this path points to where your .bin files are saved
-    const char* target_file = "../bin/generator_ema_noise2feat_w.bin";
+    // The directory where you exported your .bin files
+    const char* weight_dir = "../bin";
 
-    // 2. Allocate memory based on the Python extraction shape [16384, 128]
-    // In our NCHW struct, we treat this as [1, 1, 16384, 128] for 2D matrices
-    Tensor* dense_weight = create_tensor(1, 1, 16384, 128);
+    // 1. Load the entire model
+    SAGAN_Weights* model = load_all_weights(weight_dir);
+    printf("\n[SUCCESS] Entire 150MB model successfully loaded into RAM.\n");
 
-    // 3. Load the binary file
-    if (load_weights(dense_weight, target_file)) {
-        printf("SUCCESS: Loaded weights into memory.\n");
-        // 4. Print verification stats
-        print_tensor_info(dense_weight, "noise2feat_w");
-    }
+    // 2. Quick validation of a deep layer (e.g., the Attention Gamma scalar)
+    print_tensor_info(model->attn.gamma, "Attention Gamma");
 
-    // 5. Cleanup
-    free_tensor(dense_weight);
+    // 3. Quick validation of the final RGB Bias
+    print_tensor_info(model->rgb_conv_b, "To RGB Conv Bias");
 
+    printf("\nMemory is primed. Ready for inference math.\n");
+
+    // We will add the free_model() function later, the OS reclaims RAM on exit for now.
     return 0;
 }
