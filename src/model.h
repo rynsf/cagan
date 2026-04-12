@@ -97,4 +97,36 @@ SAGAN_Weights* load_all_weights(const char* dir) {
     return model;
 }
 
+// --- Memory Cleanup ---
+void free_resblock(ResBlockWeights* b) {
+    free_tensor(b->c1_w); free_tensor(b->c1_b);
+    free_tensor(b->c2_w); free_tensor(b->c2_b);
+    free_tensor(b->sc_w); free_tensor(b->sc_b);
+    free_tensor(b->rm1);  free_tensor(b->rv1);
+    free_tensor(b->w_emb1); free_tensor(b->b_emb1);
+    free_tensor(b->rm2);  free_tensor(b->rv2);
+    free_tensor(b->w_emb2); free_tensor(b->b_emb2);
+}
+
+void free_model(SAGAN_Weights* model) {
+    if (!model) return;
+
+    free_tensor(model->n2f_w); free_tensor(model->n2f_b);
+
+    for (int i = 0; i < 6; i++) {
+        if (i == 4) continue;
+        free_resblock(&model->blocks[i]);
+    }
+
+    free_tensor(model->attn.theta_w); free_tensor(model->attn.phi_w);
+    free_tensor(model->attn.g_w); free_tensor(model->attn.o_w);
+    free_tensor(model->attn.gamma);
+
+    free_tensor(model->rgb_conv_w); free_tensor(model->rgb_conv_b);
+    free_tensor(model->rgb_rm); free_tensor(model->rgb_rv);
+    free_tensor(model->rgb_w); free_tensor(model->rgb_b);
+
+    free(model);
+}
+
 #endif

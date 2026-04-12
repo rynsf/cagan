@@ -21,5 +21,6 @@ int main() {
     printf("\nMemory is primed. Ready for inference math.\n");
 
     // We will add the free_model() function later, the OS reclaims RAM on exit for now.
+    free_model(model);
     return 0;
 }
