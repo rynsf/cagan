@@ -2,6 +2,8 @@
 
 This repository contains a pure, dependency-free C implementation of a Self-Attention Generative Adversarial Network (SAGAN). It is capable of generating 128x128 images across 1000 ImageNet classes from mathematical first principles.
 
+Training-side C scaffold is now available in `src/train_sagan` with modular generator/discriminator code, handwritten matrix multiplications, adversarial losses, and a documented training loop.
+
 There is no Python, no PyTorch, no BLAS/LAPACK, and no external matrix libraries utilized. Every convolution, batch normalization, and attention matrix multiplication is implemented from scratch using standard C arrays and pointers.
 
 ---
@@ -21,6 +23,8 @@ The executable operates as a standalone CLI tool for image generation.
 ```bash
 ./sagan_c -w <weight_dir> -c <class_id> -s <seed> -o <output_file>
 ```
+
+Note: `<weight_dir>` must already contain exported float32 `.bin` tensors (for example `generator_ema_noise2feat_w.bin`).
 
 **Options:**
 * `-w` : Directory containing the `.bin` baked weight files (Default: `c_ready_128_bin`).
