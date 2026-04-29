@@ -34,6 +34,27 @@ This creates:
 - `sagan_train.out` (flattened educational trainer)
 - `sagan_train_2d.out` (convolutional + 2D self-attention trainer)
 
+## `sagan_train_2d.out` Flags (Full Reference)
+
+- `-b <int>`: batch size (samples per step)
+- `-t <int>`: number of training steps
+- `-z <int>`: latent noise dimension
+- `-C <int>`: base channel width (`base_c`) for conv feature maps
+- `-S <int>`: base spatial size (`base_hw`) for generator seed map; output becomes `2S x 2S`
+- `-s <int>`: random seed
+- `-V <int>`: debug dump interval (`0` disables, `1` every step, `5` every 5 steps)
+- `-D <path>`: debug dump output directory
+
+Default values:
+- `-b 2`
+- `-t 5`
+- `-z 64`
+- `-C 16`
+- `-S 8`
+- `-s 69`
+- `-V 0`
+- `-D debug_out`
+
 Run:
 
 ```bash
@@ -135,6 +156,44 @@ When enabled, each dump step writes:
 - gradient map (`dL/d(fake_img)` absolute heatmap)
 
 Training also prints detailed phase logs and tensor stats each step.
+
+## Training Logs Explained
+
+Startup logs:
+- `2D SAGAN train: batch=... steps=... base=CxSxS out=HxW`
+  - `H=W=2S` based on `-S`
+- `debug dumps enabled: every=N dir=...`
+  - printed only when `-V > 0`
+
+Per-step phase logs:
+- `[step NNN] phase=prepare`
+  - synthesize real batch and sample latent/class conditions
+- `[step NNN] phase=generator_forward`
+  - generator creates fake image batch
+- `[step NNN] phase=discriminator_real`
+  - discriminator real pass + backward contribution
+- `[step NNN] phase=discriminator_fake`
+  - discriminator fake pass + backward contribution + discriminator optimizer step
+- `[step NNN] phase=generator_update`
+  - generator loss pass through discriminator signal + generator optimizer step
+
+Tensor stats logs:
+- `[stats] g.out(fake_img) ...`
+  - reports generated image tensor shape/min/max/mean
+- `[stats] dL/d(fake_img) ...`
+  - reports gradient signal entering generator output
+
+Step summary:
+- `[step NNN] done | d_real=... d_fake=... g=... | time=...ms`
+- `d_real`: hinge real term `max(0, 1 - D(real))`
+- `d_fake`: hinge fake term `max(0, 1 + D(fake))`
+- `g`: generator hinge objective `-mean(D(fake))`
+- `time`: step runtime in milliseconds
+
+Debug output filenames:
+- Generator: `step_xxxx_fake.ppm`, `step_xxxx_g_feat_ch0.pgm`, `step_xxxx_g_up_ch0.pgm`, `step_xxxx_g_q_ch0.pgm`, `step_xxxx_g_k_ch0.pgm`, `step_xxxx_g_v_ch0.pgm`, `step_xxxx_g_attn_row0.pgm`, `step_xxxx_g_self_attn_ch0.pgm`
+- Discriminator: `step_xxxx_d_in_ch0.pgm`, `step_xxxx_d_feat_ch0.pgm`, `step_xxxx_d_q_ch0.pgm`, `step_xxxx_d_k_ch0.pgm`, `step_xxxx_d_v_ch0.pgm`, `step_xxxx_d_attn_row0.pgm`, `step_xxxx_d_self_attn_ch0.pgm`
+- Backward: `step_xxxx_grad_dimg_ch0_abs.pgm`
 
 ## 5) Losses and training steps
 
