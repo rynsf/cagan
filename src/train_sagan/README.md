@@ -155,13 +155,6 @@ Training also prints detailed phase logs and tensor stats each step.
 
 That means this is ideal for understanding and extending, but not yet equivalent to large-scale SAGAN ImageNet training.
 
-## Suggested Extensions
-
-1. Replace synthetic real data with a true image loader and normalization pipeline.
-2. Implement full self-attention backward pass through softmax and all projections.
-3. Add 2D convolutional ResBlocks to mirror inference architecture exactly.
-4. Add checkpoint serialization for trainable parameters and optimizer moments.
-5. Add mixed precision and gradient clipping for stability/performance.
 
 ## Optional Tools To Install
 
