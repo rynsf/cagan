@@ -1,4 +1,5 @@
 bin
+outputs/
 *.pth
 *.out
 *.ppm
